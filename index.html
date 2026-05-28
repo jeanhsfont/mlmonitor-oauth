@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex">
+  <title>ML Monitor — Autenticação</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      text-align: center;
+    }
+    .box { max-width: 420px; padding: 2rem; }
+    h1 { font-size: 1.25rem; margin-bottom: .5rem; }
+    p { color: #8b949e; line-height: 1.5; }
+    a { color: #58a6ff; }
+    .spin {
+      width: 28px; height: 28px; margin: 0 auto 1.25rem;
+      border: 3px solid #30363d; border-top-color: #58a6ff;
+      border-radius: 50%; animation: r 0.8s linear infinite;
+    }
+    @keyframes r { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spin"></div>
+    <h1>Conectando ao ML Monitor…</h1>
+    <p id="msg">Redirecionando de volta para o sistema local.</p>
+  </div>
+
+  <script>
+    // Relay de OAuth do Mercado Livre.
+    // O ML redireciona para cá (URL pública HTTPS), e nós reencaminhamos
+    // o code/state para o backend local do ML Monitor.
+    (function () {
+      var LOCAL_CALLBACK = "http://localhost:8000/api/v1/ml/callback";
+      var qs = window.location.search;
+
+      if (!qs || (qs.indexOf("code=") === -1 && qs.indexOf("error") === -1)) {
+        document.getElementById("msg").textContent =
+          "Esta página é usada apenas durante a autorização do Mercado Livre. " +
+          "Abra o ML Monitor e inicie a conexão por lá.";
+        document.querySelector(".spin").style.display = "none";
+        return;
+      }
+
+      window.location.replace(LOCAL_CALLBACK + qs);
+    })();
+  </script>
+</body>
+</html>
