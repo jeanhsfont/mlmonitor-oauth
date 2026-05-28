@@ -37,13 +37,19 @@
 
   <script>
     // Relay de OAuth do Mercado Livre.
-    // O ML redireciona para cá (URL pública HTTPS), e nós reencaminhamos
-    // o code/state para o backend local do ML Monitor.
+    // O ML redireciona para cá (URL pública HTTPS) e nós reencaminhamos o
+    // code/state para o backend local do ML Monitor.
+    //
+    // A porta local do backend vem embutida no parâmetro 'state', no formato
+    // "<account_id>__p<porta>". Assim cada instalação pode usar uma porta
+    // diferente sem precisar reconfigurar a redirect URI no Mercado Livre.
     (function () {
-      var LOCAL_CALLBACK = "http://localhost:8000/api/v1/ml/callback";
       var qs = window.location.search;
+      var params = new URLSearchParams(qs);
+      var state = params.get("state") || "";
 
-      if (!qs || (qs.indexOf("code=") === -1 && qs.indexOf("error") === -1)) {
+      var isCallback = params.get("code") !== null || params.get("error") !== null;
+      if (!isCallback) {
         document.getElementById("msg").textContent =
           "Esta página é usada apenas durante a autorização do Mercado Livre. " +
           "Abra o ML Monitor e inicie a conexão por lá.";
@@ -51,7 +57,12 @@
         return;
       }
 
-      window.location.replace(LOCAL_CALLBACK + qs);
+      // Extrai a porta do state; usa 8000 como padrão se não encontrar.
+      var portMatch = state.match(/__p(\d+)$/);
+      var port = portMatch ? portMatch[1] : "8000";
+
+      var localCallback = "http://localhost:" + port + "/api/v1/ml/callback";
+      window.location.replace(localCallback + qs);
     })();
   </script>
 </body>
