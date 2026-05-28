@@ -2,6 +2,7 @@
 <html lang="pt-br">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
   <title>ML Monitor — Autenticação</title>
   <style>
@@ -12,12 +13,13 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 100vh;
+      min-height: 100vh;
       margin: 0;
+      padding: 1rem;
       text-align: center;
     }
-    .box { max-width: 420px; padding: 2rem; }
-    h1 { font-size: 1.25rem; margin-bottom: .5rem; }
+    .box { max-width: 460px; padding: 2rem; width: 100%; box-sizing: border-box; }
+    h1 { font-size: 1.35rem; margin-bottom: .5rem; }
     p { color: #8b949e; line-height: 1.5; }
     a { color: #58a6ff; }
     .spin {
@@ -26,41 +28,149 @@
       border-radius: 50%; animation: r 0.8s linear infinite;
     }
     @keyframes r { to { transform: rotate(360deg); } }
+    .check { font-size: 3rem; margin-bottom: .5rem; }
+    .code {
+      margin: 1.25rem 0 .75rem;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 1rem;
+      word-break: break-all;
+      color: #e6edf3;
+      user-select: all;
+    }
+    .btn {
+      display: inline-block;
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: .85rem 1.5rem;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .btn:active { background: #1f7330; }
+    .btn.copied { background: #1f6feb; }
+    .hint { font-size: .85rem; color: #6e7681; margin-top: 1rem; }
+    .err { color: #f85149; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
   <div class="box">
-    <div class="spin"></div>
-    <h1>Conectando ao ML Monitor…</h1>
-    <p id="msg">Redirecionando de volta para o sistema local.</p>
+    <!-- Estado: redirecionando (fluxo local) -->
+    <div id="view-redirect">
+      <div class="spin"></div>
+      <h1>Conectando ao ML Monitor…</h1>
+      <p>Redirecionando de volta para o sistema local.</p>
+    </div>
+
+    <!-- Estado: mostrar código (fluxo remoto) -->
+    <div id="view-code" class="hidden">
+      <div class="check">✅</div>
+      <h1>Conta autorizada!</h1>
+      <p>Copie o código abaixo e envie para o operador do ML Monitor.</p>
+      <div class="code" id="code-value"></div>
+      <button class="btn" id="copy-btn">📋 Copiar código</button>
+      <p class="hint">Depois é só colar a mensagem para quem te pediu. Pode fechar esta página.</p>
+    </div>
+
+    <!-- Estado: erro / acesso direto -->
+    <div id="view-msg" class="hidden">
+      <h1 id="msg-title">ML Monitor</h1>
+      <p id="msg-text"></p>
+    </div>
   </div>
 
   <script>
     // Relay de OAuth do Mercado Livre.
-    // O ML redireciona para cá (URL pública HTTPS) e nós reencaminhamos o
-    // code/state para o backend local do ML Monitor.
     //
-    // A porta local do backend vem embutida no parâmetro 'state', no formato
-    // "<account_id>__p<porta>". Assim cada instalação pode usar uma porta
-    // diferente sem precisar reconfigurar a redirect URI no Mercado Livre.
+    // O ML redireciona para cá (URL pública HTTPS) com ?code=...&state=...
+    // O 'state' tem o formato "<account_id>__p<porta>" e, no modo remoto,
+    // termina com "__m".
+    //
+    //  - Modo normal  → reencaminha o callback para http://localhost:<porta>
+    //                   (o operador autoriza na própria máquina do sistema).
+    //  - Modo remoto  → EXIBE o código para ser copiado e enviado ao operador
+    //                   (o dono da conta ML autoriza em outra máquina).
     (function () {
       var qs = window.location.search;
       var params = new URLSearchParams(qs);
       var state = params.get("state") || "";
+      var code = params.get("code");
+      var error = params.get("error");
 
-      var isCallback = params.get("code") !== null || params.get("error") !== null;
-      if (!isCallback) {
-        document.getElementById("msg").textContent =
+      function show(id) {
+        ["view-redirect", "view-code", "view-msg"].forEach(function (v) {
+          document.getElementById(v).classList.toggle("hidden", v !== id);
+        });
+      }
+
+      // Acesso direto (sem parâmetros do ML)
+      if (!code && !error) {
+        document.getElementById("msg-text").textContent =
           "Esta página é usada apenas durante a autorização do Mercado Livre. " +
           "Abra o ML Monitor e inicie a conexão por lá.";
-        document.querySelector(".spin").style.display = "none";
+        show("view-msg");
         return;
       }
 
-      // Extrai a porta do state; usa 8000 como padrão se não encontrar.
-      var portMatch = state.match(/__p(\d+)$/);
-      var port = portMatch ? portMatch[1] : "8000";
+      // Erro retornado pelo ML
+      if (error) {
+        document.getElementById("msg-title").textContent = "Autorização não concluída";
+        document.getElementById("msg-title").className = "err";
+        document.getElementById("msg-text").textContent =
+          "O Mercado Livre retornou: " + error + ". Tente novamente.";
+        show("view-msg");
+        return;
+      }
 
+      var isRemote = /__m$/.test(state);
+
+      if (isRemote) {
+        // Modo remoto: exibe o código para copiar.
+        document.getElementById("code-value").textContent = code;
+        show("view-code");
+
+        var btn = document.getElementById("copy-btn");
+        btn.addEventListener("click", function () {
+          var done = function () {
+            btn.textContent = "✅ Copiado!";
+            btn.classList.add("copied");
+            setTimeout(function () {
+              btn.textContent = "📋 Copiar código";
+              btn.classList.remove("copied");
+            }, 2500);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(code).then(done, function () {
+              fallbackCopy(); done();
+            });
+          } else {
+            fallbackCopy(); done();
+          }
+        });
+
+        function fallbackCopy() {
+          var el = document.getElementById("code-value");
+          var range = document.createRange();
+          range.selectNodeContents(el);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          try { document.execCommand("copy"); } catch (e) {}
+        }
+        return;
+      }
+
+      // Modo normal: reencaminha para o backend local na porta do state.
+      var portMatch = state.match(/__p(\d+)/);
+      var port = portMatch ? portMatch[1] : "8000";
       var localCallback = "http://localhost:" + port + "/api/v1/ml/callback";
       window.location.replace(localCallback + qs);
     })();
